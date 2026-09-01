@@ -2,7 +2,19 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <!--
+    connect-src additions are for the (consent-gated, one-time) Whisper
+    model download: @huggingface/transformers fetches from huggingface.co,
+    which redirects large model-weight files to its "Xet" storage CDN at a
+    *.hf.co subdomain (observed: us.aws.cdn.hf.co — kept as a wildcard since
+    the exact regional host isn't guaranteed). worker-src allows the blob:
+    Web Worker onnxruntime-web's WASM backend spawns for inference.
+    script-src 'wasm-unsafe-eval' is the CSP3 keyword specifically scoped to
+    permitting WebAssembly compilation/instantiation — unlike 'unsafe-eval',
+    it does not enable arbitrary string-to-code eval() — required for
+    onnxruntime-web's WASM inference engine to run at all.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://huggingface.co https://*.hf.co; worker-src 'self' blob:;" />
   <title>Sentiment Advisor</title>
   <style>
     body {
@@ -31,6 +43,10 @@
     #guidance-panel.guidance-priority-urgent { border-left-color: #e05050; }
     .guidance-headline { font-weight: 600; margin-bottom: 4px; }
     .guidance-suggestion { color: #ccc; line-height: 1.4; }
+
+    #enable-stt-button { margin-top: 4px; }
+    #transcript-text { color: #ccc; font-style: italic; min-height: 1.2em; }
+    hr { border: none; border-top: 1px solid #333; margin: 14px 0; }
   </style>
 </head>
 <body>
@@ -47,6 +63,18 @@
   </div>
 
   <button id="start-button">Start listening</button>
+
+  <hr />
+
+  <div class="row">
+    <div class="row-header"><span>Speech-to-text</span><span id="stt-status" class="status">not enabled</span></div>
+    <button id="enable-stt-button">Enable live transcription (~150MB download)</button>
+  </div>
+
+  <div class="row">
+    <div class="row-header"><span>Last heard</span><span id="transcript-channel" class="status"></span></div>
+    <div id="transcript-text">—</div>
+  </div>
 
   <div class="row" id="guidance-panel">
     <div class="row-header"><span>Guidance</span><span id="guidance-source" class="status">rules</span></div>

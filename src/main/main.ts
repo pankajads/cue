@@ -12,7 +12,7 @@ let popoverWindow: BrowserWindow | null = null;
 function createPopoverWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 320,
-    height: 420,
+    height: 560,
     show: false,
     frame: false,
     resizable: false,

@@ -6,8 +6,11 @@
 import {
   ConversationGuidance,
   ConversationSession,
+  SpeakerChannel,
   TranscriptEvent,
 } from "../shared/guidance";
+import { SegmentResult, UtteranceSegmenter } from "./audio-segmenter";
+import { SpeechToTextEngine, TransformersSpeechToTextEngine } from "./speech-to-text";
 
 interface LevelMeterElements {
   status: HTMLElement;
@@ -68,11 +71,105 @@ function driveLevelMeter(stream: MediaStream, elements: LevelMeterElements): Aud
   };
 }
 
+// --- Speech-to-text ------------------------------------------------------
+//
+// Whisper expects mono PCM at 16kHz. A ScriptProcessorNode taps the same
+// MediaStream the level meter above is already watching and delivers raw
+// PCM chunks at that rate (Web Audio resamples getUserMedia/getDisplayMedia
+// streams to the AudioContext's rate automatically). ScriptProcessorNode is
+// deprecated in favor of AudioWorkletNode, but is kept for now since it
+// needs no separate worklet module file to load/bundle; swap later if the
+// deprecation warning becomes a real problem.
+//
+// Each channel gets its own UtteranceSegmenter (see audio-segmenter.ts) —
+// Whisper isn't a streaming model, so this turns the continuous PCM stream
+// into discrete finished utterances, which then get transcribed and fed
+// into the same ConversationSession the guidance panel already reads from.
+
+const STT_SAMPLE_RATE = 16_000;
+
+/**
+ * A ScriptProcessorNode only runs while connected through to a destination
+ * (the Web Audio graph is pull-based), so its output is routed through a
+ * zero-gain node rather than left disconnected — otherwise captured system
+ * audio would be audibly replayed to the speakers, and mic audio would echo.
+ */
+function capturePcm(stream: MediaStream, onChunk: (chunk: Float32Array, nowMs: number) => void): () => void {
+  const audioContext = new AudioContext({ sampleRate: STT_SAMPLE_RATE });
+  const source = audioContext.createMediaStreamSource(stream);
+  const processor = audioContext.createScriptProcessor(4096, 1, 1);
+  const silentGain = audioContext.createGain();
+  silentGain.gain.value = 0;
+
+  processor.onaudioprocess = (event) => {
+    onChunk(new Float32Array(event.inputBuffer.getChannelData(0)), Date.now());
+  };
+
+  source.connect(processor);
+  processor.connect(silentGain);
+  silentGain.connect(audioContext.destination);
+
+  return () => {
+    processor.onaudioprocess = null;
+    source.disconnect();
+    processor.disconnect();
+    silentGain.disconnect();
+    void audioContext.close();
+  };
+}
+
+let speechToTextEngine: SpeechToTextEngine = new TransformersSpeechToTextEngine();
+let sttEnabled = false;
+
+function renderTranscript(channel: SpeakerChannel, text: string): void {
+  document.getElementById("transcript-channel")!.textContent = channel;
+  document.getElementById("transcript-text")!.textContent = text;
+}
+
+async function handleSegment(channel: SpeakerChannel, segment: SegmentResult): Promise<void> {
+  try {
+    const text = await speechToTextEngine.transcribe(segment.pcm);
+    if (!text) return; // Whisper can return empty output for near-silent/noise segments
+    renderTranscript(channel, text);
+    const event: TranscriptEvent = { text, channel, isFinal: true, timestampMs: segment.endedAtMs };
+    renderGuidance(session.consume(event, renderGuidance));
+  } catch (error) {
+    console.error("transcription failed", error);
+  }
+}
+
+/** Wires a stream into the transcription pipeline if speech-to-text has been
+ * enabled; a no-op otherwise, so mic/system-audio level meters keep working
+ * exactly as before regardless of whether STT consent was given. Returns a
+ * stop function that flushes any in-progress utterance before tearing down. */
+function wireTranscription(stream: MediaStream, channel: SpeakerChannel): () => void {
+  if (!sttEnabled) return () => {};
+
+  const segmenter = new UtteranceSegmenter();
+  const stopCapture = capturePcm(stream, (chunk, nowMs) => {
+    const segment = segmenter.pushChunk(chunk, nowMs);
+    if (segment) void handleSegment(channel, segment);
+  });
+
+  return () => {
+    const trailing = segmenter.flush(Date.now());
+    stopCapture();
+    if (trailing) void handleSegment(channel, trailing);
+  };
+}
+
 async function startMicrophone(elements: LevelMeterElements): Promise<AudioSession | null> {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     elements.status.textContent = "listening";
-    return driveLevelMeter(stream, elements);
+    const levelSession = driveLevelMeter(stream, elements);
+    const stopTranscription = wireTranscription(stream, "me");
+    return {
+      stop() {
+        stopTranscription();
+        levelSession.stop();
+      },
+    };
   } catch (error) {
     elements.status.textContent = `error: ${(error as Error).message}`;
     return null;
@@ -115,12 +212,43 @@ async function startSystemAudio(elements: LevelMeterElements): Promise<AudioSess
     }
 
     elements.status.textContent = "listening";
-    return driveLevelMeter(stream, elements);
+    const levelSession = driveLevelMeter(stream, elements);
+    const stopTranscription = wireTranscription(stream, "remote");
+    return {
+      stop() {
+        stopTranscription();
+        levelSession.stop();
+      },
+    };
   } catch (error) {
     elements.status.textContent = `error: ${(error as Error).message}`;
     return null;
   }
 }
+
+// --- Enable speech-to-text (consent-gated model download) ----------------
+
+const enableSttButton = document.getElementById("enable-stt-button") as HTMLButtonElement;
+const sttStatus = document.getElementById("stt-status")!;
+
+async function enableSpeechToText(): Promise<void> {
+  if (sttEnabled) return;
+  enableSttButton.disabled = true;
+  sttStatus.textContent = "downloading…";
+  try {
+    await TransformersSpeechToTextEngine.preload((fractionDone) => {
+      sttStatus.textContent = `downloading… ${Math.round(fractionDone * 100)}%`;
+    });
+    sttEnabled = true;
+    sttStatus.textContent = "ready";
+    enableSttButton.hidden = true;
+  } catch (error) {
+    sttStatus.textContent = `error: ${(error as Error).message}`;
+    enableSttButton.disabled = false;
+  }
+}
+
+enableSttButton.addEventListener("click", () => void enableSpeechToText());
 
 // --- Start/Stop toggle ---------------------------------------------------
 
@@ -179,13 +307,11 @@ startButton.addEventListener("click", () => {
 
 // --- Sentiment/guidance panel -------------------------------------------
 //
-// No speech-to-text is wired in yet (see README), so nothing calls this in
-// a real user session today. It's wired up now, ahead of that, because it's
-// pure logic with no platform dependency (see src/shared/guidance) and this
-// is the exact integration point the STT binding will call once it exists —
-// one TranscriptEvent per interim/final recognition result, same shape
-// either way. Exposed on `window` rather than through contextBridge/IPC
-// because it needs no main-process or native access at all.
+// Fed by handleSegment() above once speech-to-text is enabled and a channel
+// finishes an utterance. Exposed on `window` (not through contextBridge/IPC,
+// since it needs no main-process or native access) so it can also be driven
+// directly — e.g. by tests, or anything else that already has recognized
+// text and wants to skip audio capture entirely.
 
 const session = new ConversationSession();
 
@@ -211,11 +337,34 @@ window.sentimentAdvisorGuidance = {
   },
 };
 
+// Test-only seams. Harmless in a real session — nothing else calls them.
+window.sentimentAdvisorTestHooks = {
+  // Lets tests substitute a fake SpeechToTextEngine so the full mic-audio ->
+  // segmenter -> transcription -> guidance pipeline can be exercised
+  // deterministically, without downloading or running the real model.
+  setSpeechToTextEngineForTesting(engine: SpeechToTextEngine): void {
+    speechToTextEngine = engine;
+    sttEnabled = true;
+  },
+  // The other direction: calls the *real* Whisper pipeline directly on
+  // caller-supplied PCM, bypassing audio capture/segmentation entirely.
+  // This is what actually proves real speech is transcribed correctly —
+  // dependency-injecting a fake engine (above) can only ever prove the
+  // wiring around it is correct, never that transcription itself works.
+  transcribeForTesting(pcm: number[]): Promise<string> {
+    return new TransformersSpeechToTextEngine().transcribe(Float32Array.from(pcm));
+  },
+};
+
 declare global {
   interface Window {
     sentimentAdvisorGuidance: {
       ingestTranscriptEvent(event: TranscriptEvent): ConversationGuidance;
       reset(): void;
+    };
+    sentimentAdvisorTestHooks: {
+      setSpeechToTextEngineForTesting(engine: SpeechToTextEngine): void;
+      transcribeForTesting(pcm: number[]): Promise<string>;
     };
   }
 }

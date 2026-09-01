@@ -6,7 +6,7 @@
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js && esbuild src/renderer/renderer.ts --bundle --platform=browser --format=iife --outfile=dist/renderer/renderer.js && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html",
+    "build": "tsc -p tsconfig.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js && esbuild src/renderer/renderer.ts --bundle --platform=browser --format=iife --outfile=dist/renderer/renderer.js && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html && mkdir -p dist/renderer/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm dist/renderer/ort/",
     "build:tests": "tsc -p tsconfig.test.json",
     "dev": "npm run build && electron .",
     "test:unit": "node --test dist-tests/tests/unit/**/*.test.js",
@@ -14,6 +14,7 @@
     "test:e2e": "node --test dist-tests/tests/e2e/**/*.test.js",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
     "pretest": "npm run build && npm run build:tests",
+    "test:reliability": "npm run build && npm run build:tests && node --test dist-tests/tests/reliability/**/*.test.js",
     "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
@@ -51,5 +52,12 @@
       ],
       "category": "Utility"
     }
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0"
+  },
+  "overrides": {
+    "sharp": "0.35.4",
+    "adm-zip": "0.6.0"
   }
 }
