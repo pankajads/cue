@@ -36,7 +36,7 @@ jobs:
         run: npm ci
 
       - name: Build installers
-        run: npx electron-builder ${{ matrix.build-args }}
+        run: npm run build && npx electron-builder ${{ matrix.build-args }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
