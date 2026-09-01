@@ -35,6 +35,10 @@
       "dist/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "node_modules/node-llama-cpp/**/*",
+      "node_modules/@node-llama-cpp/**/*"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
@@ -54,7 +58,8 @@
     }
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0"
+    "@huggingface/transformers": "^4.2.0",
+    "node-llama-cpp": "^3.20.0"
   },
   "overrides": {
     "sharp": "0.35.4",

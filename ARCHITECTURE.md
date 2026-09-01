@@ -39,7 +39,7 @@ flowchart LR
     Analyzer -- "SignalSnapshot" --> Advisor["GuidanceAdvisor<br/>(stateful, escalates wording<br/>across repeated turns)"]
     Advisor -- "ConversationGuidance<br/>(source: rules)" --> Panel["Guidance panel<br/>(instant, always available)"]
 
-    Session -. "same ConversationTurn[],<br/>raced with ~1.8s timeout" .-> LLM["LlmGuidanceEngine<br/>(planned: node-llama-cpp)"]
+    Session -. "same ConversationTurn[],<br/>raced with ~1.8s timeout" .-> LLM["LocalLlmGuidanceEngine (real)<br/>see Local-LLM guidance below"]
     LLM -. "ConversationGuidance<br/>(source: llm), if it wins the race" .-> Panel
 ```
 
@@ -49,15 +49,33 @@ flowchart LR
 
 This design, and the two conversation fixtures it's validated against (a de-escalating customer-support call and an escalating HR warning — see `tests/fixtures/conversation-scenarios.ts`), is covered by `tests/unit/conversation-scenarios.test.ts` (algorithm correctness) and `tests/e2e/conversation-scenarios.test.ts` (same fixtures, replayed through the real UI over CDP).
 
-## Planned: local-LLM upgrade
+## Local-LLM guidance upgrade
 
-No concrete `LlmGuidanceEngine` exists yet — until one is attached, every session runs on the rule-based path alone, which is a fully supported permanent mode, not a degraded fallback. The planned implementation:
+```mermaid
+flowchart TB
+    subgraph Renderer
+        Local["LocalLlmGuidanceEngine<br/>(thin IPC proxy)"]
+    end
+    subgraph Main["Main process (native addon lives here)"]
+        Engine["LocalLlmEngine<br/>node-llama-cpp"]
+        Model[("Qwen2.5-0.5B-Instruct<br/>GGUF, Q4_K_M, ~490MB")]
+        Engine --> Model
+    end
+    Local -- "ipcRenderer.invoke('llm:advise', turns)" --> Engine
+    Engine -- "grammar-constrained JSON,<br/>~1.8s internal timeout" --> Local
+```
 
-- **`node-llama-cpp`**, running a small instruct model in-process (no external server, no Ollama, no network call) — the same on-device, no-cloud guarantee as the rest of the app.
-- **Grammar-constrained (GBNF) JSON output** — `{"sentiment": ..., "tension": ..., "guidance": ...}` with the string length capped in the grammar itself — so a small model's output is reliably parseable without trusting free-text obedience.
-- **Raced against a ~1.8s hard timeout**, per turn, via the same `generation`-counter mechanism already implemented in `ConversationSession`. The rule-based guidance is the hard latency guarantee; the LLM only ever *upgrades* it when it lands in time.
-- **Consent-gated model download** with progress and integrity verification, matching the app's on-device-only, nothing-leaves-the-machine positioning.
-- The UI already renders a `source` tag (`rules` vs `llm`) on every guidance card, wired and tested now, ahead of there being an LLM to tag.
+Unlike Whisper, this genuinely does need a native addon: `node-llama-cpp` can only run in the main process (a sandboxed, `nodeIntegration`-off renderer has no way to load a native module at all) — confirmed against the library's own Electron guide, which states this as a hard constraint, not a suggestion. `LocalLlmGuidanceEngine` (`src/renderer/local-llm-guidance-engine.ts`) is a thin IPC proxy satisfying `ConversationSession`'s `LlmGuidanceEngine` interface; all the real work — model download, loading, prompting, the timeout — lives in `LocalLlmEngine` (`src/main/llm/local-llm-engine.ts`) and is reached via `ipcMain.handle`/`ipcRenderer.invoke` (`llm:enable`, `llm:advise`, `llm:isReady`, plus a `llm:enableProgress` push event for download progress).
+
+- **Model**: `Qwen/Qwen2.5-0.5B-Instruct-GGUF`, `Q4_K_M` quantization (~490MB), fetched via `node-llama-cpp`'s own `resolveModelFile("hf:...")` helper — handles the Hugging Face URI resolution, download, and a size-based integrity check itself, cached under the app's `userData` directory so it's a true one-time download, consent-gated behind the popover's "Enable local LLM guidance" button.
+- **Grammar-constrained JSON output** via `llama.createGrammarForJsonSchema({...})` — `{"sentiment": ..., "tension": ..., "guidance": ...}`, with `guidance` length-capped in the schema itself — so a small model's output is *structurally* guaranteed parseable regardless of how well it follows instructions; `grammar.parse()` never has to handle malformed JSON.
+- **Raced against a ~1.8s hard timeout** via an `AbortController` passed as `signal` to `session.prompt()`, matching the original design's budget. **Real, measured numbers** (not assumed): one-time model load (`enable()`) takes ~2.3s, but per-turn inference (`advise()`) — the number that actually matters against the 1.8s budget — measured at 380–750ms per call once the model is warm. The design's core bet (a local LLM can answer fast enough to matter) holds on ordinary hardware.
+- `ConversationSession`'s existing `generation`-counter race (already built and tested before this engine existed) handles the rest: a slow or stale response can never overwrite guidance for a newer turn, and never blocks the instant rule-based result.
+- The UI's `source` tag (`rules` vs `llm`) on every guidance card, and the racing/upgrade logic itself, were both already wired and tested *before* this engine existed (`tests/unit/conversation-session.test.ts`, with a fake engine) — this section is what plugs a real model into a seam that was already proven correct.
+
+**A real, TypeScript/CommonJS interop bug this surfaced**: `node-llama-cpp` is a pure-ESM package with top-level await in its own module graph. A plain `await import("node-llama-cpp")`, compiled by `tsc` to CommonJS (main-process files aren't esbuild-bundled), gets down-leveled to `Promise.resolve().then(() => require(...))` — which still calls `require()` synchronously under the hood, and fails with `ERR_REQUIRE_ASYNC_MODULE` against a module with top-level await. Fixed by routing the import through `new Function("return import('node-llama-cpp')")` — hiding the literal `import(...)` syntax from `tsc`'s static rewrite so it becomes a genuine runtime dynamic import (Node's real ESM loader handles top-level await correctly; only `tsc`'s CJS down-level of the *syntax* was the problem).
+
+Tests: `tests/unit/local-llm-engine.test.ts` (fake `node-llama-cpp`, deterministic — timeout, progress, prompt-building, malformed-output rejection), `tests/e2e/local-llm-wiring.test.ts` (fake `LlmGuidanceEngine` attached through the real UI, proves the racing/upgrade DOM behavior), and — the one that actually matters, same reasoning as Whisper's — `tests/reliability/local-llm-real.test.ts`, which downloads the real model and runs a real fixture transcript through it with no fakes at all.
 
 ## Audio capture
 

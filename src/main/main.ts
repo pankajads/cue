@@ -1,6 +1,7 @@
 import { app, BrowserWindow, desktopCapturer, Menu, session, Tray, nativeImage } from "electron";
 import * as path from "path";
 import { registerAudioSourceHandlers } from "./audio-sources";
+import { registerLlmHandlers } from "./llm-handlers";
 
 // LSUIElement-equivalent: no Dock icon, menu-bar/tray-only presence — the
 // app lives entirely in the tray, like a background utility.
@@ -12,7 +13,7 @@ let popoverWindow: BrowserWindow | null = null;
 function createPopoverWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 320,
-    height: 560,
+    height: 640,
     show: false,
     frame: false,
     resizable: false,
@@ -62,6 +63,7 @@ function togglePopover(): void {
 
 app.whenReady().then(() => {
   registerAudioSourceHandlers();
+  registerLlmHandlers();
 
   // Answers the renderer's navigator.mediaDevices.getDisplayMedia() calls
   // (see renderer.ts's startSystemAudio) by auto-selecting the primary

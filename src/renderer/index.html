@@ -44,7 +44,7 @@
     .guidance-headline { font-weight: 600; margin-bottom: 4px; }
     .guidance-suggestion { color: #ccc; line-height: 1.4; }
 
-    #enable-stt-button { margin-top: 4px; }
+    #enable-stt-button, #enable-llm-button { margin-top: 4px; }
     #transcript-text { color: #ccc; font-style: italic; min-height: 1.2em; }
     hr { border: none; border-top: 1px solid #333; margin: 14px 0; }
   </style>
@@ -69,6 +69,11 @@
   <div class="row">
     <div class="row-header"><span>Speech-to-text</span><span id="stt-status" class="status">not enabled</span></div>
     <button id="enable-stt-button">Enable live transcription (~150MB download)</button>
+  </div>
+
+  <div class="row">
+    <div class="row-header"><span>Local LLM guidance</span><span id="llm-status" class="status">not enabled</span></div>
+    <button id="enable-llm-button">Enable local LLM guidance (~490MB download)</button>
   </div>
 
   <div class="row">

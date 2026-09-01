@@ -6,11 +6,13 @@
 import {
   ConversationGuidance,
   ConversationSession,
+  LlmGuidanceEngine,
   SpeakerChannel,
   TranscriptEvent,
 } from "../shared/guidance";
 import { SegmentResult, UtteranceSegmenter } from "./audio-segmenter";
 import { SpeechToTextEngine, TransformersSpeechToTextEngine } from "./speech-to-text";
+import { LocalLlmGuidanceEngine } from "./local-llm-guidance-engine";
 
 interface LevelMeterElements {
   status: HTMLElement;
@@ -325,6 +327,41 @@ function renderGuidance(guidance: ConversationGuidance): void {
 
 renderGuidance(session.guidance);
 
+// --- Enable local-LLM guidance upgrade (consent-gated model download) ----
+//
+// Purely additive: the rule-based guidance above is already fully
+// functional and is never blocked on this. Once enabled, ConversationSession
+// races this against the instant rule-based read on every turn and only
+// upgrades the panel (tagged "llm") if it answers within its own ~1.8s
+// budget — see src/main/llm/local-llm-engine.ts.
+
+const enableLlmButton = document.getElementById("enable-llm-button") as HTMLButtonElement;
+const llmStatus = document.getElementById("llm-status")!;
+let llmEnabled = false;
+
+async function enableLocalLlm(): Promise<void> {
+  if (llmEnabled) return;
+  enableLlmButton.disabled = true;
+  llmStatus.textContent = "downloading…";
+  const unsubscribe = window.sentimentAdvisor.onLocalLlmDownloadProgress((fractionDone) => {
+    llmStatus.textContent = `downloading… ${Math.round(fractionDone * 100)}%`;
+  });
+  try {
+    await window.sentimentAdvisor.enableLocalLlm();
+    llmEnabled = true;
+    llmStatus.textContent = "ready";
+    enableLlmButton.hidden = true;
+    session.attachLlmEngine(new LocalLlmGuidanceEngine());
+  } catch (error) {
+    llmStatus.textContent = `error: ${(error as Error).message}`;
+    enableLlmButton.disabled = false;
+  } finally {
+    unsubscribe();
+  }
+}
+
+enableLlmButton.addEventListener("click", () => void enableLocalLlm());
+
 window.sentimentAdvisorGuidance = {
   ingestTranscriptEvent(event: TranscriptEvent): ConversationGuidance {
     const guidance = session.consume(event, renderGuidance);
@@ -354,6 +391,13 @@ window.sentimentAdvisorTestHooks = {
   transcribeForTesting(pcm: number[]): Promise<string> {
     return new TransformersSpeechToTextEngine().transcribe(Float32Array.from(pcm));
   },
+  // Lets tests attach a fake LlmGuidanceEngine to exercise the racing/
+  // upgrade behavior deterministically, without downloading or running the
+  // real ~490MB model.
+  setLlmGuidanceEngineForTesting(engine: LlmGuidanceEngine): void {
+    llmEnabled = true;
+    session.attachLlmEngine(engine);
+  },
 };
 
 declare global {
@@ -365,6 +409,7 @@ declare global {
     sentimentAdvisorTestHooks: {
       setSpeechToTextEngineForTesting(engine: SpeechToTextEngine): void;
       transcribeForTesting(pcm: number[]): Promise<string>;
+      setLlmGuidanceEngineForTesting(engine: LlmGuidanceEngine): void;
     };
   }
 }
