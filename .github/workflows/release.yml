@@ -1,0 +1,65 @@
+name: Release
+
+# Builds installers on each OS's own native runner — not by cross-compiling
+# from one machine — so Windows/Linux/macOS artifacts are all genuinely
+# native builds. Only runs on a version tag push or a manual trigger, not on
+# every commit/PR: macOS runners cost 10x against Actions minutes on a
+# private repo (see the sibling Swift project's CI, which learned this the
+# hard way), so this is deliberately bounded to actual releases.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            build-args: --mac --x64 --arm64
+          - os: windows-latest
+            build-args: --win --x64
+          - os: ubuntu-latest
+            build-args: --linux --x64 --arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installers
+        run: npx electron-builder ${{ matrix.build-args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: installers/*
+          draft: true

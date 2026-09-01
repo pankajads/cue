@@ -1,62 +1,131 @@
 # Sentiment Advisor
 
-A local, on-device conversation-sentiment advisor for macOS, Windows, and Linux. It listens during a call (your microphone and, separately, the other side's audio), reads the tone of the conversation as it happens, and surfaces short, concrete guidance in a tray popover — entirely on-device, with no audio or transcript ever leaving the machine.
+**Real-time conversation coaching that never leaves your machine.**
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full pipeline design, including the planned local-LLM guidance upgrade.
+[![CI](https://github.com/pankajads/sentiment-advisor-electron/actions/workflows/ci.yml/badge.svg)](https://github.com/pankajads/sentiment-advisor-electron/actions/workflows/ci.yml)
+![platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
+![privacy](https://img.shields.io/badge/audio%20%26%20transcripts-never%20leave%20the%20machine-brightgreen)
+![tests](https://img.shields.io/badge/tests-36%20passing-brightgreen)
+
+Sentiment Advisor sits quietly in your menu bar during a call. It listens, transcribes, and reads the tone of the conversation **as it happens** — then hands you a short, concrete suggestion for what to say next, right when it matters. Every part of that pipeline — audio, transcription, sentiment analysis — runs **entirely on your machine**. No audio, no transcript, no API call ever leaves it.
+
+---
+
+## The problem
+
+Anyone on a live, high-stakes call is flying blind about their own delivery. A support agent can't tell in the moment whether the customer's frustration just tipped from "annoyed" to "about to escalate." An HR partner delivering a warning can't easily tell if their tone is landing as intended. A manager in a tense 1:1 is too busy thinking about what to say next to notice the pattern repeating for the third time.
+
+The tools that exist today solve a different problem:
+- **Post-call analytics** (Gong, Chorus, etc.) tell you how the call went — tomorrow, in a dashboard. Too late to change anything.
+- **Cloud sentiment APIs** work live, but every word of the conversation leaves the building to get scored — a non-starter for HR conversations, healthcare, legal, or anything involving PII.
+- **Manual self-awareness** is what everyone actually falls back on, which is exactly what's hardest to do while you're also listening, thinking, and talking.
+
+## What Sentiment Advisor does about it
+
+- **Listens locally** — your microphone, and separately, the other party's audio (system/"remote" audio, no separate call recording needed).
+- **Transcribes locally** — OpenAI's Whisper model runs on-device (no cloud STT API).
+- **Reads the tone as it happens** — a rule-based sentiment/tension engine scores every turn instantly (no network round-trip in the critical path), and escalates its language if a bad pattern persists instead of repeating the same tip forever.
+- **Tells you what to actually do about it** — not just "sentiment: negative," but a concrete line to say or action to take, e.g. *"Still critical after 3 turns — naming an apology again won't land twice. Name the pattern explicitly and offer one concrete next step with a timeframe."*
+- **Never sends anything anywhere.** The privacy story isn't a policy promise, it's architectural: there's no server in this app to send data to.
+
+## Who it's for
+
+| Use case | What it catches |
+|---|---|
+| **Customer support** | A frustrated customer's tension climbing turn over turn, before it becomes an escalation you can't walk back |
+| **HR / people ops** | Whether a difficult-feedback or warning conversation is landing as firm-but-professional, or just firm |
+| **Sales** | Whether a prospect's engagement is genuinely warming up or you're talking past a stall |
+| **1:1s and management** | A recurring issue (lateness, conflict with a peer) that keeps resurfacing without ever being named directly |
+
+The two scenarios the guidance engine is validated against — end to end, algorithm and UI — are exactly the first two rows above; see [`tests/fixtures/conversation-scenarios.ts`](tests/fixtures/conversation-scenarios.ts) for the full transcripts.
+
+## How it works
+
+```mermaid
+flowchart LR
+    Mic["🎤 Microphone"] --> Capture
+    Sys["🔊 System audio<br/>(the other party)"] --> Capture
+    Capture["Local audio capture"] --> STT["Whisper<br/>(on-device, WASM)"]
+    STT --> Engine["Sentiment + tension engine<br/>(instant, rule-based)"]
+    Engine --> Panel["Guidance panel<br/>in the tray popover"]
+    Engine -. optional, local .-> LLM["Local LLM upgrade<br/>(planned)"]
+    LLM -. richer phrasing, if it's fast enough .-> Panel
+```
+
+Everything above the dotted line exists and is tested today. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full, unvarnished technical design — including three real bugs a real end-to-end test caught that a code review never would have.
+
+**Tech stack:**
+
+| Layer | Choice | Why |
+|---|---|---|
+| Shell | Electron + TypeScript | One codebase, three OSes — the same reason `desktopCapturer` replaces a native virtual-audio-driver dependency |
+| Speech-to-text | Whisper via [`@huggingface/transformers`](https://github.com/huggingface/transformers.js) (WASM, in-renderer) | No native addon, no per-platform binary matrix — see [ARCHITECTURE.md#speech-to-text](ARCHITECTURE.md#speech-to-text) |
+| Sentiment/guidance | Hand-written TypeScript, zero dependencies | Instant, explainable, no ML latency in the critical path |
+| Packaging | `electron-builder` | One config, native installers for all three OSes |
+
+## Download & install
+
+Prebuilt installers aren't published as a GitHub Release yet (this is an active, private project) — build one yourself, it takes under a minute:
+
+```sh
+git clone https://github.com/pankajads/sentiment-advisor-electron.git
+cd sentiment-advisor-electron
+npm install
+npm run dist          # your current OS/arch only
+# or target specific platforms:
+npx electron-builder --mac --x64 --arm64
+npx electron-builder --win --x64
+npx electron-builder --linux --x64 --arm64
+```
+
+Installers land in `release/`: a `.dmg` for macOS, an `.exe` (NSIS) for Windows, an `.AppImage` for Linux — pick the one matching your OS and CPU architecture (Apple Silicon vs. Intel; most Windows/Linux machines are x64).
+
+**These builds are unsigned** (no Apple Developer ID or Windows code-signing certificate yet), so the OS will warn you on first launch:
+- **macOS**: Gatekeeper blocks it — right-click the app → **Open** (not double-click) the first time, or run `xattr -cr "/Applications/Sentiment Advisor.app"` if it still refuses.
+- **Windows**: SmartScreen warns — click **More info** → **Run anyway**.
+
+This is expected for an unsigned build, not a sign anything's wrong with the app itself.
+
+## Using it
+
+1. Launch the app — it lives in your tray/menu bar only (no Dock icon).
+2. Click the tray icon to open the popover.
+3. Click **Enable live transcription** (downloads the Whisper model once, ~150MB, cached after that — this is the only network call the app ever makes).
+4. Click **Start listening**. Grant the microphone permission prompt (and screen-recording, for the system-audio side, on macOS).
+5. Talk. Watch **Last heard** confirm what it transcribed, and the **Guidance** panel react to the tone of the conversation in real time.
+6. Click **Stop listening** when you're done — it releases the microphone/screen-capture indicators immediately.
 
 ## Status
 
-**End to end and test-covered** (`npm test` — 36 automated tests, unit/integration/e2e, no manual clicking required): mic audio now flows all the way through to real transcription and guidance, not just level meters.
+**End-to-end and test-covered**: 36 automated tests (unit/integration/e2e, `npm test`) plus a separate reliability test that runs the *real*, unstubbed Whisper pipeline against real synthesized speech (`npm run test:reliability`) — no manual clicking required to verify any of it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and the real bugs found and fixed along the way (a renderer-crashing Electron API, a broken quantized model export, three separate CSP gaps, a stubbing gap that hid a crash from the test suite for a full round).
 
-- Tray-only app shell (no Dock icon), frameless popover window, a narrow typed IPC bridge (`contextIsolation` on, `nodeIntegration` off).
-- System/"remote" audio source resolution via `desktopCapturer` — the permission/decision logic is unit-tested against fake platform state.
-- The app launches, creates its tray, and quits cleanly — verified by spawning the real built app in a real Electron runtime.
-- Clicking **Start listening** (now a real Start/Stop toggle) wires a `MediaStream` to a live `AnalyserNode` and drives the level meters from real audio — verified end-to-end over Chromium's DevTools Protocol (not macOS Accessibility APIs, so it needs no special permission and runs headlessly).
-- **Speech-to-text, in-renderer, no native addon**: `@huggingface/transformers` runs Whisper (`Xenova/whisper-tiny.en`) over WASM directly in the popover's renderer process — see [ARCHITECTURE.md](ARCHITECTURE.md#speech-to-text) for why this beat a native whisper.cpp binding on reliability grounds, and the real bugs (a broken quantized model export, a CDN-dependent WASM runtime, three separate CSP gaps) that a real, unstubbed test caught and this fixes.
-- A finished utterance (detected by a simple energy-based `UtteranceSegmenter`) is transcribed and fed straight into the same rule-based guidance engine below — the whole pipeline is real, not a demo stub.
-- The rule-based sentiment/tension/guidance engine (`src/shared/guidance/`) — unit-tested extensively, and validated against two full realistic conversation transcripts (a frustrated customer support call, and an HR warning to an SRE about rudeness and repeated lateness), both at the algorithm level and end-to-end through the real UI. See [ARCHITECTURE.md](ARCHITECTURE.md#guidance-engine) for how it works and [tests/fixtures/conversation-scenarios.ts](tests/fixtures/conversation-scenarios.ts) for the transcripts themselves.
-- **A real reliability test, not just a wiring test**: `npm run test:reliability` synthesizes actual speech with macOS's `say`, runs it through the *real*, unstubbed Whisper pipeline (no fakes), and asserts the expected words come back. This is deliberately separate from `npm test`/CI (network-dependent, downloads the real ~150MB model, macOS-only tooling) but is what actually backs the "highly reliable" bar for this feature — every other STT test fakes the transcription engine to stay fast and deterministic, which proves the plumbing works but never that transcription itself does.
+**Known open items:**
+- System/"remote" audio capture works reliably on Windows; on macOS, Electron's own current API for it is documented as Windows-only, so it degrades gracefully to mic-only rather than crashing — see [ARCHITECTURE.md#audio-capture](ARCHITECTURE.md#audio-capture).
+- The local-LLM guidance upgrade (richer, model-generated phrasing racing the instant rule-based path) has its integration seam fully built and tested, but no model wired in yet — see [ARCHITECTURE.md#planned-local-llm-upgrade](ARCHITECTURE.md#planned-local-llm-upgrade).
+- No custom app icon yet (ships with Electron's default) and no code-signing certificate (see installer warnings above).
 
-**Not yet verified** — needs a human, because it's gated behind a one-time OS permission dialog no automated tool can click through in a headless environment:
-- Whether real hardware microphone audio actually delivers usable data once you personally grant the mic permission prompt.
-
-**Known real limitation, not a bug to report twice**: system/"remote" audio used to crash the whole popover on click (a real Electron bug — audio-only `getUserMedia({mandatory:{chromeMediaSource:'desktop',...}})` kills the renderer process). That crash is fixed (see [ARCHITECTURE.md](ARCHITECTURE.md#audio-capture)) by switching to `getDisplayMedia` + `setDisplayMediaRequestHandler`, which is Electron's own current answer — but Electron 44's shipped types document loopback audio there as **Windows-only today**. On macOS, expect the system-audio meter to degrade gracefully to "unavailable" rather than crash, not to show real captured audio yet. This is an open architectural question, not a quick fix — see ARCHITECTURE.md for the options.
-
-**Not yet built:**
-- The local-LLM guidance upgrade (`node-llama-cpp`) — the interface it plugs into already exists and is fully wired (`LlmGuidanceEngine` in `src/shared/guidance/conversation-session.ts`), but no concrete implementation exists yet. See [ARCHITECTURE.md](ARCHITECTURE.md#planned-local-llm-upgrade).
-- Packaging/release automation (`electron-builder` config exists; no CI publish step yet).
-
-## Try it
+## Development
 
 ```sh
 npm install
-npm test   # builds, then runs the full unit/integration/e2e suite
-npm run dev
+npm test            # build, then unit + integration + e2e (36 tests)
+npm run dev          # run it locally
 ```
-
-Click the tray icon, then **Enable live transcription** (downloads the ~150MB Whisper model once, cached after that) and **Start listening**. The OS will prompt for microphone and (for the system-audio meter) screen-recording permission — screen-recording is what desktop audio capture is gated behind on macOS. Speak, and the guidance panel should update from your real, transcribed words.
-
-## Testing
 
 Tests are split into layers under `tests/`, each independently runnable:
 
 | Layer | What it covers | Needs Electron? |
 |---|---|---|
-| `tests/unit/` | Pure logic: audio-source decision-making, the sentiment/tension analyzer, the guidance advisor, session state, the utterance segmenter — including the two full conversation-scenario fixtures | No — plain `node --test` |
+| `tests/unit/` | Pure logic: audio-source decisions, the sentiment/tension analyzer, the guidance advisor, session state, the utterance segmenter — including the two full conversation-scenario fixtures | No — plain `node --test` |
 | `tests/integration/` | The real app launching in a real Electron process, becoming ready, and quitting cleanly | Yes — spawns the built app |
-| `tests/e2e/` | The real UI, driven over Chromium's DevTools Protocol: clicking Start/Stop listening, replaying the conversation fixtures through the actual guidance panel's DOM, and the full mic → segmenter → (fake) transcription → guidance pipeline | Yes — drives the built app with `playwright-core` |
-| `tests/reliability/` | The *real*, unstubbed Whisper pipeline transcribing *real* synthesized speech — see Status above | Yes, plus macOS's `say`/`afconvert` and network access |
+| `tests/e2e/` | The real UI over Chromium's DevTools Protocol: Start/Stop listening, the conversation fixtures replayed through the actual guidance panel DOM, and the full mic → segmenter → (fake) transcription → guidance pipeline | Yes — `playwright-core` drives the built app |
+| `tests/reliability/` | The *real*, unstubbed Whisper pipeline transcribing *real* synthesized speech (macOS `say` + `afconvert`) | Yes, plus network access |
 
 ```sh
 npm run test:unit
 npm run test:integration
 npm run test:e2e
-npm test               # unit + integration + e2e, in order
-npm run test:reliability   # separate — see why in Status above
+npm run test:reliability   # separate from `npm test`/CI — see Status above
 ```
 
-## Why Electron
-
-Audio capture is the interesting architectural bet: mic input is plain `navigator.mediaDevices.getUserMedia`, and system/"remote" audio ("what you hear") uses Electron's `getDisplayMedia`/`desktopCapturer` — no third-party virtual audio driver (e.g. BlackHole) needed, at least on Windows today (see [ARCHITECTURE.md](ARCHITECTURE.md#audio-capture) for the honest macOS caveat). Linux support is expected to be weaker (compositor/PulseAudio-dependent) and may need a manual monitor-source fallback.
-
-Speech-to-text is the same bet again, one layer up: Whisper runs entirely in-renderer via WASM (`@huggingface/transformers`), not a native whisper.cpp addon — because the renderer is already a real Chromium context, that's a much smaller reliability risk than a per-platform native binary matrix (see [ARCHITECTURE.md](ARCHITECTURE.md#speech-to-text)). The guidance logic itself (`src/shared/guidance/`) is pure TypeScript with no platform dependency at all, so it runs identically on all three OSes.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the process layout, the guidance-engine design, and every real bug this project's own tests have caught (and how).
