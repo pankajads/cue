@@ -6,16 +6,23 @@
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html",
+    "build": "tsc -p tsconfig.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js && esbuild src/renderer/renderer.ts --bundle --platform=browser --format=iife --outfile=dist/renderer/renderer.js && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html && mkdir -p dist/renderer/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm dist/renderer/ort/",
+    "build:tests": "tsc -p tsconfig.test.json",
     "dev": "npm run build && electron .",
-    "test": "node --test dist/main/**/*.test.js",
-    "pretest": "npm run build",
+    "test:unit": "node --test dist-tests/tests/unit/**/*.test.js",
+    "test:integration": "node --test dist-tests/tests/integration/**/*.test.js",
+    "test:e2e": "node --test dist-tests/tests/e2e/**/*.test.js",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "pretest": "npm run build && npm run build:tests",
+    "test:reliability": "npm run build && npm run build:tests && node --test dist-tests/tests/reliability/**/*.test.js",
     "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "electron": "^44.1.0",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "playwright-core": "^1.62.1",
     "typescript": "^5.7.2"
   },
   "build": {
@@ -28,16 +35,34 @@
       "dist/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "node_modules/node-llama-cpp/**/*",
+      "node_modules/@node-llama-cpp/**/*"
+    ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dmg"]
+      "target": [
+        "dmg"
+      ]
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Utility"
     }
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
+    "node-llama-cpp": "^3.20.0"
+  },
+  "overrides": {
+    "sharp": "0.35.4",
+    "adm-zip": "0.6.0"
   }
 }
