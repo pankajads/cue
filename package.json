@@ -1,8 +1,8 @@
 {
-  "name": "sentiment-advisor",
-  "productName": "Sentiment Advisor",
+  "name": "cue",
+  "productName": "Cue",
   "version": "0.1.0",
-  "description": "Cross-platform local conversation sentiment advisor (macOS/Windows/Linux)",
+  "description": "Real-time, on-device conversation coaching (macOS/Windows/Linux)",
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
@@ -26,8 +26,8 @@
     "typescript": "^5.7.2"
   },
   "build": {
-    "appId": "com.sentimentadvisor.app",
-    "productName": "Sentiment Advisor",
+    "appId": "com.cueapp.app",
+    "productName": "Cue",
     "directories": {
       "output": "release"
     },
