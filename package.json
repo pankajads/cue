@@ -6,10 +6,14 @@
   "private": true,
   "main": "dist/main/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html",
+    "build": "tsc -p tsconfig.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js && esbuild src/renderer/renderer.ts --bundle --platform=browser --format=iife --outfile=dist/renderer/renderer.js && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html",
+    "build:tests": "tsc -p tsconfig.test.json",
     "dev": "npm run build && electron .",
-    "test": "node --test dist/main/**/*.test.js",
-    "pretest": "npm run build",
+    "test:unit": "node --test dist-tests/tests/unit/**/*.test.js",
+    "test:integration": "node --test dist-tests/tests/integration/**/*.test.js",
+    "test:e2e": "node --test dist-tests/tests/e2e/**/*.test.js",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "pretest": "npm run build && npm run build:tests",
     "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
@@ -28,8 +32,6 @@
     },
     "files": [
       "dist/**/*",
-      "!dist/**/*.test.js",
-      "!dist/**/*.test.js.map",
       "package.json"
     ],
     "mac": {

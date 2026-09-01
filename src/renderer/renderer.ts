@@ -1,7 +1,13 @@
-// Deliberately no import/export statements: this compiles to plain CommonJS
-// and loads via a bare <script> tag with nodeIntegration disabled, so it must
-// not reference `exports`/`require` at runtime. `window.sentimentAdvisor` is
-// the only bridge into main-process capability (see preload.ts).
+// Bundled by esbuild into a single dependency-free file (see package.json's
+// "build" script) before it's loaded via a bare <script> tag with
+// nodeIntegration disabled — there is no Node module system in that context,
+// so the import below only works because it gets inlined at build time, the
+// same treatment preload.ts needs for the same reason (see its own comment).
+import {
+  ConversationGuidance,
+  ConversationSession,
+  TranscriptEvent,
+} from "../shared/guidance";
 
 interface LevelMeterElements {
   status: HTMLElement;
@@ -17,8 +23,7 @@ function meter(prefix: "mic" | "system"): LevelMeterElements {
 
 /**
  * Wires a MediaStream to an AnalyserNode and drives a level-meter element's
- * width from RMS, the same signal shape as the original app's
- * AudioLevelMeter.swift — a direct behavioral port, not a redesign.
+ * width from RMS.
  */
 function driveLevelMeter(stream: MediaStream, elements: LevelMeterElements): void {
   const audioContext = new AudioContext();
@@ -83,3 +88,46 @@ document.getElementById("start-button")!.addEventListener("click", () => {
   void startMicrophone(meter("mic"));
   void startSystemAudio(meter("system"));
 });
+
+// --- Sentiment/guidance panel -------------------------------------------
+//
+// No speech-to-text is wired in yet (see README), so nothing calls this in
+// a real user session today. It's wired up now, ahead of that, because it's
+// pure logic with no platform dependency (see src/shared/guidance) and this
+// is the exact integration point the STT binding will call once it exists —
+// one TranscriptEvent per interim/final recognition result, same shape
+// either way. Exposed on `window` rather than through contextBridge/IPC
+// because it needs no main-process or native access at all.
+
+const session = new ConversationSession();
+
+function renderGuidance(guidance: ConversationGuidance): void {
+  const panel = document.getElementById("guidance-panel")!;
+  panel.className = `row guidance-priority-${guidance.priority}`;
+  document.getElementById("guidance-source")!.textContent = guidance.source;
+  document.getElementById("guidance-headline")!.textContent = guidance.headline;
+  document.getElementById("guidance-suggestion")!.textContent = guidance.suggestion;
+}
+
+renderGuidance(session.guidance);
+
+window.sentimentAdvisorGuidance = {
+  ingestTranscriptEvent(event: TranscriptEvent): ConversationGuidance {
+    const guidance = session.consume(event, renderGuidance);
+    renderGuidance(guidance);
+    return guidance;
+  },
+  reset(): void {
+    session.reset();
+    renderGuidance(session.guidance);
+  },
+};
+
+declare global {
+  interface Window {
+    sentimentAdvisorGuidance: {
+      ingestTranscriptEvent(event: TranscriptEvent): ConversationGuidance;
+      reset(): void;
+    };
+  }
+}

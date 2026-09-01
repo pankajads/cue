@@ -25,21 +25,20 @@ const defaultDeps: AudioSourceDeps = {
 };
 
 /**
- * System/"remote" audio capture, the cross-platform replacement for the
- * Swift app's BlackHole dependency. Electron's desktopCapturer + a
+ * System/"remote" audio capture — Electron's desktopCapturer + a
  * chromeMediaSourceId constraint on getUserMedia gives loopback-style
- * "what you hear" capture without any third-party virtual audio driver on
- * macOS (13+) and Windows. Linux support is weaker (depends on the
- * compositor/PulseAudio setup) — this deliberately returns null rather than
- * throwing when no usable source exists, so callers degrade to mic-only,
- * matching the original app's "microphone-only degraded mode" pattern.
+ * "what you hear" capture without any third-party virtual audio driver
+ * (e.g. BlackHole) on macOS (13+) and Windows. Linux support is weaker
+ * (depends on the compositor/PulseAudio setup) — this deliberately returns
+ * null rather than throwing when no usable source exists, so callers
+ * degrade to a microphone-only mode instead of failing outright.
  */
 export async function resolveSystemAudioSourceId(
   deps: AudioSourceDeps = defaultDeps
 ): Promise<string | null> {
   if (deps.platform === "darwin") {
-    // Screen/audio recording on macOS is gated by TCC just like the
-    // Speech/Microphone permissions in the original app.
+    // Screen/audio recording on macOS is gated by TCC, same as microphone
+    // access.
     const status = deps.getMediaAccessStatus("screen");
     if (status !== "granted") {
       return null;

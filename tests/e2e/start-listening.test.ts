@@ -24,7 +24,7 @@ import { _electron as electron } from "playwright-core";
  */
 test("clicking Start listening drives the microphone level meter from real audio data", async () => {
   const electronBinary = require("electron") as unknown as string;
-  const appEntry = path.join(__dirname, "..", "..", "dist", "main", "main.js");
+  const appEntry = path.join(__dirname, "..", "..", "..", "dist", "main", "main.js");
 
   const env: Record<string, string> = { SENTIMENT_ADVISOR_E2E_TEST_HOOKS: "1" };
   for (const [key, value] of Object.entries(process.env)) {

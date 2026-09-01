@@ -12,7 +12,8 @@ export interface SentimentAdvisorAPI {
    * navigator.mediaDevices.getUserMedia({
    *   audio: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: id } }
    * })
-   * to capture system/"remote" audio (what would be BlackHole's job on macOS).
+   * to capture system/"remote" audio — the job a third-party virtual audio
+   * driver like BlackHole would otherwise be needed for on macOS.
    * Resolves to null if no capturable source with audio was found (e.g.
    * platform/permission limitation) — callers should fall back to mic-only.
    */

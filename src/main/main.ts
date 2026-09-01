@@ -2,8 +2,8 @@ import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
 import * as path from "path";
 import { registerAudioSourceHandlers } from "./audio-sources";
 
-// LSUIElement-equivalent: no Dock icon, menu-bar/tray-only presence, matching
-// the original app's AppDelegate + MenuBarExtra behavior.
+// LSUIElement-equivalent: no Dock icon, menu-bar/tray-only presence — the
+// app lives entirely in the tray, like a background utility.
 app.dock?.hide();
 
 let tray: Tray | null = null;

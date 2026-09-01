@@ -9,7 +9,10 @@ import * as path from "node:path";
  * Launches the real, built app in an actual Electron runtime (not
  * `node --test`'s plain Node process) and confirms it starts up cleanly —
  * main process ready, tray created, no crash — then has it quit itself and
- * checks it exited with code 0.
+ * checks it exited with code 0. An integration test rather than a unit
+ * test: it exercises the real main.ts wiring (app/Tray/BrowserWindow
+ * lifecycle) across a real process boundary, not a single module in
+ * isolation.
  *
  * `require("electron")` from plain Node resolves to the path of the
  * Electron binary rather than its API (the API only exists inside a running
@@ -23,7 +26,7 @@ import * as path from "node:path";
  */
 test("app launches, becomes ready, creates its tray, and quits cleanly", async () => {
   const electronBinary = require("electron") as unknown as string;
-  const appEntry = path.join(__dirname, "..", "..", "dist", "main", "main.js");
+  const appEntry = path.join(__dirname, "..", "..", "..", "dist", "main", "main.js");
 
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;

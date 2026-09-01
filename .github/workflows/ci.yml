@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel a superseded run on the same branch/PR to save Actions minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Deliberately ubuntu, not macOS: none of this app's logic or tests are
+    # macOS-specific (see tests/unit and tests/e2e — audio-source resolution
+    # and the guidance engine are asserted to behave correctly on whichever
+    # platform they run on), and GitHub-hosted macOS runners cost 10x against
+    # Actions minutes on a private repo. Not worth it for a PR gate.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Build app and tests
+        run: npm run build && npm run build:tests
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      # Electron needs a real (even if virtual) display server to start at
+      # all, regardless of whether a window is ever shown.
+      - name: Install Xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Integration tests
+        run: xvfb-run --auto-servernum npm run test:integration
+
+      - name: E2E tests
+        run: xvfb-run --auto-servernum npm run test:e2e
