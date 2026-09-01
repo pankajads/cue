@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Native/model-loading deps have already needed manual security
+      # overrides once (sharp, adm-zip — see package.json's "overrides" and
+      # ARCHITECTURE.md) — grouped so a bump lands as one reviewable PR
+      # instead of a flood of individual ones.
+      onnx-and-transformers:
+        patterns:
+          - "@huggingface/*"
+          - "onnxruntime-*"
+          - "sharp"
+          - "@img/*"
+      electron-tooling:
+        patterns:
+          - "electron"
+          - "electron-builder"
+          - "@electron/*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
