@@ -74,6 +74,16 @@ app.whenReady().then(() => {
       Menu.buildFromTemplate([{ label: "Quit", role: "quit" }])
     );
   });
+
+  // Opt-in hook so start-listening.e2e.test.ts can open the popover the same
+  // way a real tray click does, without simulating a native click on a tray
+  // icon (OS-specific and not something Playwright's Electron driver
+  // supports). Only attached when explicitly requested, so it's inert in
+  // every real run of the app.
+  if (process.env.SENTIMENT_ADVISOR_E2E_TEST_HOOKS === "1") {
+    (global as unknown as { __sentimentAdvisorTestHooks: { togglePopover: () => void } }).__sentimentAdvisorTestHooks =
+      { togglePopover };
+  }
 });
 
 // Deliberately no "window-all-closed" handler that calls app.quit(): Electron
