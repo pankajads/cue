@@ -73,14 +73,12 @@ Prebuilt installers aren't published as a GitHub Release yet (this is an active,
 git clone https://github.com/pankajads/sentiment-advisor-electron.git
 cd sentiment-advisor-electron
 npm install
-npm run dist          # your current OS/arch only
-# or target specific platforms:
-npx electron-builder --mac --x64 --arm64
-npx electron-builder --win --x64
-npx electron-builder --linux --x64 --arm64
+npm run dist          # your current OS/arch only — the one guaranteed to be correct, see below
 ```
 
-Installers land in `release/`: a `.dmg` for macOS, an `.exe` (NSIS) for Windows, an `.AppImage` for Linux — pick the one matching your OS and CPU architecture (Apple Silicon vs. Intel; most Windows/Linux machines are x64).
+Installers land in `release/`: a `.dmg` for macOS, an `.exe` (NSIS) for Windows, an `.AppImage` for Linux.
+
+**Cross-arch/cross-platform local builds are broken for the local-LLM feature specifically — verified, not a guess.** `npx electron-builder --mac --x64` on an Apple Silicon machine (or `--win`/`--linux` from any single machine) produces an installer that's missing `node-llama-cpp`'s native binary for that target: npm only installs the optional native package matching the *build machine's own* platform/arch, and there is no local flag that overrides this (confirmed: `--force` and explicit `--os`/`--cpu` flags both fail with `EBADPLATFORM`). Speech-to-text (WASM, no native code) and everything else in such a build still works fine — only "Enable local LLM guidance" would fail on the mismatched build. The only correct way to get genuinely native binaries for every platform is building on each OS's own machine, which is exactly what `.github/workflows/release.yml` does (native GitHub-hosted runners per OS, triggered on a version tag) — use that for anything beyond your own machine's architecture, not a local cross-build.
 
 **These builds are unsigned** (no Apple Developer ID or Windows code-signing certificate yet), so the OS will warn you on first launch:
 - **macOS**: Gatekeeper blocks it — right-click the app → **Open** (not double-click) the first time, or run `xattr -cr "/Applications/Sentiment Advisor.app"` if it still refuses.
@@ -104,8 +102,11 @@ Both model downloads are the only network calls the app ever makes.
 
 **End-to-end and test-covered**: 44 automated tests (unit/integration/e2e, `npm test`) plus two separate reliability tests that run the *real*, unstubbed Whisper and local-LLM pipelines against real inputs (`npm run test:reliability`) — no manual clicking required to verify any of it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and the real bugs found and fixed along the way (a renderer-crashing Electron API, a broken quantized model export, several CSP gaps, a TypeScript/CJS interop bug with ESM native modules, a stubbing gap that hid a crash from the test suite for a full round).
 
+**Also verified against the real packaged app, not just `npm run dev`**: launched the actual `.dmg`-installed `.app` (asar-archived, native binaries extracted via `asarUnpack`) and drove it exactly like the e2e tests do — Start/Stop listening, and a full `enableLocalLlm()` → `adviseWithLocalLlm()` round-trip against the real, packaged `node-llama-cpp` native binary. Per-turn inference from the packaged build measured at 869ms, consistent with the dev-mode numbers above. One real difference worth noting: one-time model *load* took ~13s in the packaged build vs. ~2.3s in dev — likely a cold-disk-cache effect on a freshly-placed model file, not a packaging defect, but not independently reproduced enough times to call fully explained either.
+
 **Known open items:**
 - System/"remote" audio capture works reliably on Windows; on macOS, Electron's own current API for it is documented as Windows-only, so it degrades gracefully to mic-only rather than crashing — see [ARCHITECTURE.md#audio-capture](ARCHITECTURE.md#audio-capture).
+- Cross-arch/cross-platform local builds (e.g. building the Windows installer on a Mac) are missing `node-llama-cpp`'s native binary and will fail specifically on "Enable local LLM guidance" — see Download & install above. Only same-machine builds, or CI's native per-OS runners, are verified correct.
 - No custom app icon yet (ships with Electron's default) and no code-signing certificate (see installer warnings above).
 
 ## Development
