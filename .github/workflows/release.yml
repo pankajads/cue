@@ -58,6 +58,13 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # This repo's default GITHUB_TOKEN permissions are read-only, so without
+    # this the release-creation call gets a real 403 ("Resource not
+    # accessible by integration") — hit on the first actual release run.
+    # Scoped to just this job, not the whole workflow, since it's the only
+    # one that needs to write anything.
+    permissions:
+      contents: write
     steps:
       - uses: actions/download-artifact@v8
         with:
