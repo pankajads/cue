@@ -4,6 +4,16 @@
   "version": "0.1.0",
   "description": "Real-time, on-device conversation coaching (macOS/Windows/Linux)",
   "private": true,
+  "license": "MIT",
+  "author": "Pankaj Negi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pankajads/cue.git"
+  },
+  "homepage": "https://github.com/pankajads/cue#readme",
+  "bugs": {
+    "url": "https://github.com/pankajads/cue/issues"
+  },
   "main": "dist/main/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json && esbuild src/preload/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/preload/preload.js && esbuild src/renderer/renderer.ts --bundle --platform=browser --format=iife --outfile=dist/renderer/renderer.js && mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/index.html && mkdir -p dist/renderer/ort && cp node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm dist/renderer/ort/",

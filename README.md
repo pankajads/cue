@@ -3,6 +3,7 @@
 **Real-time conversation coaching that never leaves your machine.**
 
 [![CI](https://github.com/pankajads/cue/actions/workflows/ci.yml/badge.svg)](https://github.com/pankajads/cue/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![privacy](https://img.shields.io/badge/audio%20%26%20transcripts-never%20leave%20the%20machine-brightgreen)
 ![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen)
@@ -134,3 +135,11 @@ npm run test:reliability   # separate from `npm test`/CI — see Status above
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the process layout, the guidance-engine design, and every real bug this project's own tests have caught (and how).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow (branch → PR → CI must pass → merge — enforced by branch protection, not just convention) and testing expectations. Please also read the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues: see [SECURITY.md](SECURITY.md) rather than a public issue.
+
+## License
+
+[MIT](LICENSE) © Pankaj Negi
