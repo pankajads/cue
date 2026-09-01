@@ -39,7 +39,7 @@ flowchart LR
     Analyzer -- "SignalSnapshot" --> Advisor["GuidanceAdvisor<br/>(stateful, escalates wording<br/>across repeated turns)"]
     Advisor -- "ConversationGuidance<br/>(source: rules)" --> Panel["Guidance panel<br/>(instant, always available)"]
 
-    Session -. "same ConversationTurn[],<br/>raced with ~1.8s timeout" .-> LLM["LocalLlmGuidanceEngine (real)<br/>see Local-LLM guidance below"]
+    Session -. "same ConversationTurn[],<br/>raced with a 1.8s timeout" .-> LLM["LocalLlmGuidanceEngine (real)<br/>see Local-LLM guidance below"]
     LLM -. "ConversationGuidance<br/>(source: llm), if it wins the race" .-> Panel
 ```
 
@@ -58,11 +58,11 @@ flowchart TB
     end
     subgraph Main["Main process (native addon lives here)"]
         Engine["LocalLlmEngine<br/>node-llama-cpp"]
-        Model[("Qwen2.5-0.5B-Instruct<br/>GGUF, Q4_K_M, ~490MB")]
+        Model[("Qwen2.5-0.5B-Instruct<br/>GGUF, Q4_K_M, 490MB")]
         Engine --> Model
     end
     Local -- "ipcRenderer.invoke('llm:advise', turns)" --> Engine
-    Engine -- "grammar-constrained JSON,<br/>~1.8s internal timeout" --> Local
+    Engine -- "grammar-constrained JSON,<br/>1.8s internal timeout" --> Local
 ```
 
 Unlike Whisper, this genuinely does need a native addon: `node-llama-cpp` can only run in the main process (a sandboxed, `nodeIntegration`-off renderer has no way to load a native module at all) — confirmed against the library's own Electron guide, which states this as a hard constraint, not a suggestion. `LocalLlmGuidanceEngine` (`src/renderer/local-llm-guidance-engine.ts`) is a thin IPC proxy satisfying `ConversationSession`'s `LlmGuidanceEngine` interface; all the real work — model download, loading, prompting, the timeout — lives in `LocalLlmEngine` (`src/main/llm/local-llm-engine.ts`) and is reached via `ipcMain.handle`/`ipcRenderer.invoke` (`llm:enable`, `llm:advise`, `llm:isReady`, plus a `llm:enableProgress` push event for download progress).

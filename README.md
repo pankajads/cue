@@ -50,7 +50,7 @@ flowchart LR
     STT --> Engine["Sentiment + tension engine<br/>(instant, rule-based)"]
     Engine --> Panel["Guidance panel<br/>in the tray popover"]
     Engine -. optional, local .-> LLM["Local LLM upgrade<br/>(Qwen2.5-0.5B, node-llama-cpp)"]
-    LLM -. richer phrasing, if it wins the ~1.8s race .-> Panel
+    LLM -. richer phrasing, if it wins the 1.8s race .-> Panel
 ```
 
 Everything above — including the local LLM — exists and is tested today, not "planned." See [ARCHITECTURE.md](ARCHITECTURE.md) for the full, unvarnished technical design — including several real bugs real end-to-end tests caught that a code review never would have.
