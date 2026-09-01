@@ -123,6 +123,74 @@ test("clicking Start listening drives the microphone level meter from real audio
       const systemWidth = await window.$eval("#system-level", (el) => parseFloat((el as HTMLElement).style.width));
       assert.ok(systemWidth > 0, `expected system level meter to move, got width ${systemWidth}%`);
     }
+
+    const buttonLabelWhileListening = await window.textContent("#start-button");
+    assert.equal(buttonLabelWhileListening, "Stop listening");
+  } finally {
+    await app.close();
+  }
+});
+
+test('clicking "Stop listening" tears capture down: button label, status text, and level meters all reset', async () => {
+  const electronBinary = require("electron") as unknown as string;
+  const appEntry = path.join(__dirname, "..", "..", "..", "dist", "main", "main.js");
+
+  const env: Record<string, string> = { SENTIMENT_ADVISOR_E2E_TEST_HOOKS: "1" };
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value !== undefined && key !== "ELECTRON_RUN_AS_NODE") {
+      env[key] = value;
+    }
+  }
+
+  const app = await electron.launch({ executablePath: electronBinary, args: [appEntry], env });
+  try {
+    const [window] = await Promise.all([
+      app.firstWindow(),
+      app.evaluate(() => {
+        (
+          global as unknown as { __sentimentAdvisorTestHooks: { togglePopover: () => void } }
+        ).__sentimentAdvisorTestHooks.togglePopover();
+      }),
+    ]);
+
+    await window.addInitScript(() => {
+      const audioContext = new AudioContext();
+      const oscillator = audioContext.createOscillator();
+      oscillator.frequency.value = 440;
+      const destination = audioContext.createMediaStreamDestination();
+      oscillator.connect(destination);
+      oscillator.start();
+      navigator.mediaDevices.getUserMedia = async () => destination.stream;
+      navigator.mediaDevices.getDisplayMedia = async () => destination.stream;
+    });
+    await window.reload();
+
+    await window.click("#start-button");
+    await window.waitForFunction(
+      () => {
+        const el = document.getElementById("mic-level") as HTMLElement | null;
+        return !!el && parseFloat(el.style.width) > 0;
+      },
+      undefined,
+      { timeout: 5_000 }
+    );
+    assert.equal(await window.textContent("#start-button"), "Stop listening");
+
+    // Same button, second click — the toggle, not a second "start".
+    await window.click("#start-button");
+
+    assert.equal(await window.textContent("#start-button"), "Start listening");
+    assert.equal(await window.textContent("#mic-status"), "not started");
+    assert.equal(await window.textContent("#system-status"), "not started");
+    const micWidthAfterStop = await window.$eval("#mic-level", (el) => parseFloat((el as HTMLElement).style.width));
+    assert.equal(micWidthAfterStop, 0);
+
+    // The level meter's requestAnimationFrame loop must actually have
+    // stopped, not just been reset once — wait past a few frames and
+    // confirm it hasn't crept back up on its own.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const micWidthAfterWaiting = await window.$eval("#mic-level", (el) => parseFloat((el as HTMLElement).style.width));
+    assert.equal(micWidthAfterWaiting, 0);
   } finally {
     await app.close();
   }

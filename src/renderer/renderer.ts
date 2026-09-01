@@ -21,11 +21,19 @@ function meter(prefix: "mic" | "system"): LevelMeterElements {
   };
 }
 
+/** A running capture: holds everything that needs tearing down on stop. */
+interface AudioSession {
+  stop(): void;
+}
+
 /**
  * Wires a MediaStream to an AnalyserNode and drives a level-meter element's
- * width from RMS.
+ * width from RMS. Returns a handle to stop it — cancels the meter's
+ * animation loop, stops every track (releasing the mic/screen-capture
+ * indicator), and closes the AudioContext, rather than leaking all three
+ * forever once the user clicks "Stop listening".
  */
-function driveLevelMeter(stream: MediaStream, elements: LevelMeterElements): void {
+function driveLevelMeter(stream: MediaStream, elements: LevelMeterElements): AudioSession {
   const audioContext = new AudioContext();
   const source = audioContext.createMediaStreamSource(stream);
   const analyser = audioContext.createAnalyser();
@@ -33,8 +41,11 @@ function driveLevelMeter(stream: MediaStream, elements: LevelMeterElements): voi
   source.connect(analyser);
 
   const buffer = new Float32Array(analyser.fftSize);
+  let animationFrameId: number | null = null;
+  let stopped = false;
 
   function tick() {
+    if (stopped) return;
     analyser.getFloatTimeDomainData(buffer);
     let sumSquares = 0;
     for (const sample of buffer) {
@@ -42,27 +53,38 @@ function driveLevelMeter(stream: MediaStream, elements: LevelMeterElements): voi
     }
     const rms = Math.sqrt(sumSquares / buffer.length);
     elements.fill.style.width = `${Math.min(rms * 500, 100)}%`;
-    requestAnimationFrame(tick);
+    animationFrameId = requestAnimationFrame(tick);
   }
-  tick();
+  animationFrameId = requestAnimationFrame(tick);
+
+  return {
+    stop() {
+      stopped = true;
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+      stream.getTracks().forEach((track) => track.stop());
+      void audioContext.close();
+      elements.fill.style.width = "0%";
+    },
+  };
 }
 
-async function startMicrophone(elements: LevelMeterElements): Promise<void> {
+async function startMicrophone(elements: LevelMeterElements): Promise<AudioSession | null> {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     elements.status.textContent = "listening";
-    driveLevelMeter(stream, elements);
+    return driveLevelMeter(stream, elements);
   } catch (error) {
     elements.status.textContent = `error: ${(error as Error).message}`;
+    return null;
   }
 }
 
-async function startSystemAudio(elements: LevelMeterElements): Promise<void> {
+async function startSystemAudio(elements: LevelMeterElements): Promise<AudioSession | null> {
   try {
     const sourceId = await window.sentimentAdvisor.getSystemAudioSourceId();
     if (!sourceId) {
       elements.status.textContent = "unavailable (permission or platform)";
-      return;
+      return null;
     }
 
     // getUserMedia with the legacy { mandatory: { chromeMediaSource:
@@ -89,19 +111,70 @@ async function startSystemAudio(elements: LevelMeterElements): Promise<void> {
       // supported yet (see ARCHITECTURE.md) — a real gap, not a bug in this
       // code: getDisplayMedia succeeded but delivered no audio track.
       elements.status.textContent = "unavailable (no system audio track on this platform)";
-      return;
+      return null;
     }
 
     elements.status.textContent = "listening";
-    driveLevelMeter(stream, elements);
+    return driveLevelMeter(stream, elements);
   } catch (error) {
     elements.status.textContent = `error: ${(error as Error).message}`;
+    return null;
   }
 }
 
-document.getElementById("start-button")!.addEventListener("click", () => {
-  void startMicrophone(meter("mic"));
-  void startSystemAudio(meter("system"));
+// --- Start/Stop toggle ---------------------------------------------------
+
+const startButton = document.getElementById("start-button") as HTMLButtonElement;
+let activeSessions: AudioSession[] = [];
+let listening = false;
+// Bumped on every start/stop. Mic and system audio resolve independently (an
+// IPC round-trip for the latter) — batching them behind a single Promise.all
+// before touching activeSessions would leave a window where a fast
+// Start-then-Stop click finds activeSessions still empty and stops nothing,
+// so whichever capture had already started keeps running with no button
+// left to stop it. Each one is instead attached (or, if a stop already
+// happened by the time it resolves, immediately stopped) on its own.
+let listenGeneration = 0;
+
+function attachWhenReady(pending: Promise<AudioSession | null>, generation: number): void {
+  void pending.then((session) => {
+    if (!session) return;
+    if (generation !== listenGeneration) {
+      session.stop();
+      return;
+    }
+    activeSessions.push(session);
+  });
+}
+
+function startListening(): void {
+  if (listening) return;
+  listening = true;
+  // Flipped immediately, not after mic/system-audio settle: the button
+  // represents the user's stated intent ("I clicked Start"), not whether
+  // every capture attempt has finished negotiating.
+  startButton.textContent = "Stop listening";
+  const generation = ++listenGeneration;
+  attachWhenReady(startMicrophone(meter("mic")), generation);
+  attachWhenReady(startSystemAudio(meter("system")), generation);
+}
+
+function stopListening(): void {
+  listenGeneration += 1;
+  activeSessions.forEach((session) => session.stop());
+  activeSessions = [];
+  listening = false;
+  startButton.textContent = "Start listening";
+  meter("mic").status.textContent = "not started";
+  meter("system").status.textContent = "not started";
+}
+
+startButton.addEventListener("click", () => {
+  if (listening) {
+    stopListening();
+  } else {
+    startListening();
+  }
 });
 
 // --- Sentiment/guidance panel -------------------------------------------
