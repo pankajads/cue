@@ -45,6 +45,19 @@ jobs:
       - name: Install Xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
+      # npm installs Electron as the unprivileged runner user, so its
+      # Chromium sandbox helper binary never gets the root-owned setuid bit
+      # it needs — Electron aborts on launch rather than silently running
+      # unsandboxed: "chrome-sandbox is owned by root and has mode 4755".
+      # This is the standard fix (keeps the real sandbox enabled in CI,
+      # rather than disabling it via ELECTRON_DISABLE_SANDBOX) — a real
+      # failure hit on this workflow's first real run, not anticipated in
+      # advance.
+      - name: Fix Electron sandbox permissions
+        run: |
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+
       - name: Integration tests
         run: xvfb-run --auto-servernum npm run test:integration
 
