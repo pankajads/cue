@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+  <title>Sentiment Advisor</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, "Segoe UI", sans-serif;
+      font-size: 13px;
+      background: #1e1e1e;
+      color: #eee;
+    }
+    h1 { font-size: 14px; margin: 0 0 12px; }
+    .row { margin-bottom: 12px; }
+    .row-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .level-track { height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+    .level-fill { height: 100%; background: #4a9eff; width: 0%; transition: width 60ms linear; }
+    .status { color: #999; font-size: 11px; }
+    button { font-size: 12px; padding: 4px 10px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Sentiment Advisor</h1>
+
+  <div class="row">
+    <div class="row-header"><span>Microphone</span><span id="mic-status" class="status">not started</span></div>
+    <div class="level-track"><div id="mic-level" class="level-fill"></div></div>
+  </div>
+
+  <div class="row">
+    <div class="row-header"><span>System audio</span><span id="system-status" class="status">not started</span></div>
+    <div class="level-track"><div id="system-level" class="level-fill"></div></div>
+  </div>
+
+  <button id="start-button">Start listening</button>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
