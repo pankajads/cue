@@ -1,13 +1,13 @@
-# Sentiment Advisor
+# Cue
 
 **Real-time conversation coaching that never leaves your machine.**
 
-[![CI](https://github.com/pankajads/sentiment-advisor-electron/actions/workflows/ci.yml/badge.svg)](https://github.com/pankajads/sentiment-advisor-electron/actions/workflows/ci.yml)
+[![CI](https://github.com/pankajads/cue/actions/workflows/ci.yml/badge.svg)](https://github.com/pankajads/cue/actions/workflows/ci.yml)
 ![platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue)
 ![privacy](https://img.shields.io/badge/audio%20%26%20transcripts-never%20leave%20the%20machine-brightgreen)
-![tests](https://img.shields.io/badge/tests-44%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-48%20passing-brightgreen)
 
-Sentiment Advisor sits quietly in your menu bar during a call. It listens, transcribes, and reads the tone of the conversation **as it happens** — then hands you a short, concrete suggestion for what to say next, right when it matters. Every part of that pipeline — audio, transcription, sentiment analysis — runs **entirely on your machine**. No audio, no transcript, no API call ever leaves it.
+Cue sits quietly in your menu bar during a call. It listens, transcribes, and reads the tone of the conversation **as it happens** — then hands you a short, concrete suggestion for what to say next, right when it matters. Every part of that pipeline — audio, transcription, sentiment analysis — runs **entirely on your machine**. No audio, no transcript, no API call ever leaves it.
 
 ---
 
@@ -20,7 +20,7 @@ The tools that exist today solve a different problem:
 - **Cloud sentiment APIs** work live, but every word of the conversation leaves the building to get scored — a non-starter for HR conversations, healthcare, legal, or anything involving PII.
 - **Manual self-awareness** is what everyone actually falls back on, which is exactly what's hardest to do while you're also listening, thinking, and talking.
 
-## What Sentiment Advisor does about it
+## What Cue does about it
 
 - **Listens locally** — your microphone, and separately, the other party's audio (system/"remote" audio, no separate call recording needed).
 - **Transcribes locally** — OpenAI's Whisper model runs on-device (no cloud STT API).
@@ -70,8 +70,8 @@ Everything above — including the local LLM — exists and is tested today, not
 Prebuilt installers aren't published as a GitHub Release yet (this is an active, private project) — build one yourself, it takes under a minute:
 
 ```sh
-git clone https://github.com/pankajads/sentiment-advisor-electron.git
-cd sentiment-advisor-electron
+git clone https://github.com/pankajads/cue.git
+cd cue
 npm install
 npm run dist          # your current OS/arch only — the one guaranteed to be correct, see below
 ```
@@ -81,7 +81,7 @@ Installers land in `release/`: a `.dmg` for macOS, an `.exe` (NSIS) for Windows,
 **Cross-arch/cross-platform local builds are broken for the local-LLM feature specifically — verified, not a guess.** `npx electron-builder --mac --x64` on an Apple Silicon machine (or `--win`/`--linux` from any single machine) produces an installer that's missing `node-llama-cpp`'s native binary for that target: npm only installs the optional native package matching the *build machine's own* platform/arch, and there is no local flag that overrides this (confirmed: `--force` and explicit `--os`/`--cpu` flags both fail with `EBADPLATFORM`). Speech-to-text (WASM, no native code) and everything else in such a build still works fine — only "Enable local LLM guidance" would fail on the mismatched build. The only correct way to get genuinely native binaries for every platform is building on each OS's own machine, which is exactly what `.github/workflows/release.yml` does (native GitHub-hosted runners per OS, triggered on a version tag) — use that for anything beyond your own machine's architecture, not a local cross-build.
 
 **These builds are unsigned** (no Apple Developer ID or Windows code-signing certificate yet), so the OS will warn you on first launch:
-- **macOS**: Gatekeeper blocks it — right-click the app → **Open** (not double-click) the first time, or run `xattr -cr "/Applications/Sentiment Advisor.app"` if it still refuses.
+- **macOS**: Gatekeeper blocks it — right-click the app → **Open** (not double-click) the first time, or run `xattr -cr "/Applications/Cue.app"` if it still refuses.
 - **Windows**: SmartScreen warns — click **More info** → **Run anyway**.
 
 This is expected for an unsigned build, not a sign anything's wrong with the app itself.
@@ -100,7 +100,7 @@ Both model downloads are the only network calls the app ever makes.
 
 ## Status
 
-**End-to-end and test-covered**: 44 automated tests (unit/integration/e2e, `npm test`) plus two separate reliability tests that run the *real*, unstubbed Whisper and local-LLM pipelines against real inputs (`npm run test:reliability`) — no manual clicking required to verify any of it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and the real bugs found and fixed along the way (a renderer-crashing Electron API, a broken quantized model export, several CSP gaps, a TypeScript/CJS interop bug with ESM native modules, a stubbing gap that hid a crash from the test suite for a full round).
+**End-to-end and test-covered**: 48 automated tests (unit/integration/e2e, `npm test`) plus two separate reliability tests that run the *real*, unstubbed Whisper and local-LLM pipelines against real inputs (`npm run test:reliability`) — no manual clicking required to verify any of it. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full design and the real bugs found and fixed along the way (a renderer-crashing Electron API, a broken quantized model export, several CSP gaps, a TypeScript/CJS interop bug with ESM native modules, a stubbing gap that hid a crash from the test suite for a full round).
 
 **Also verified against the real packaged app, not just `npm run dev`**: launched the actual `.dmg`-installed `.app` (asar-archived, native binaries extracted via `asarUnpack`) and drove it exactly like the e2e tests do — Start/Stop listening, and a full `enableLocalLlm()` → `adviseWithLocalLlm()` round-trip against the real, packaged `node-llama-cpp` native binary. Per-turn inference from the packaged build measured at 869ms, consistent with the dev-mode numbers above. One real difference worth noting: one-time model *load* took ~13s in the packaged build vs. ~2.3s in dev — likely a cold-disk-cache effect on a freshly-placed model file, not a packaging defect, but not independently reproduced enough times to call fully explained either.
 
@@ -113,7 +113,7 @@ Both model downloads are the only network calls the app ever makes.
 
 ```sh
 npm install
-npm test            # build, then unit + integration + e2e (44 tests)
+npm test            # build, then unit + integration + e2e (48 tests)
 npm run dev          # run it locally
 ```
 

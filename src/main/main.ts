@@ -94,7 +94,7 @@ app.whenReady().then(() => {
 
   const icon = nativeImage.createFromPath(path.join(__dirname, "../../assets/tray-icon.png"));
   tray = new Tray(icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip("Sentiment Advisor");
+  tray.setToolTip("Cue");
   tray.on("click", togglePopover);
 
   // Right-click gets a real quit path even before the rest of the UI exists.
