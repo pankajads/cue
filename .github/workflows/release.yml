@@ -36,7 +36,13 @@ jobs:
         run: npm ci
 
       - name: Build installers
-        run: npx electron-builder ${{ matrix.build-args }}
+        # --publish never: electron-builder auto-detects a version-tag push
+        # and defaults to publishing straight to GitHub itself, which fails
+        # without a token here — and would race three separate per-OS
+        # publishes against each other even with one, since publishing is
+        # deliberately centralized in the "publish" job below instead
+        # (softprops/action-gh-release, one release, all platforms' files).
+        run: npm run build && npx electron-builder ${{ matrix.build-args }} --publish never
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
