@@ -54,16 +54,26 @@ test("clicking Start listening drives the microphone level meter from real audio
     ]);
 
     // Installed before reload so it's in place the moment renderer.ts's
-    // top-level code runs and attaches the button's click handler.
+    // top-level code runs and attaches the button's click handler. Both
+    // getUserMedia (mic) and getDisplayMedia (system audio) are replaced —
+    // this test's job is proving the UI *wiring* with deterministic
+    // synthetic audio, not real hardware or real ambient system sound
+    // (which the test runner has none of). The real, unstubbed
+    // getDisplayMedia path — including main.ts's setDisplayMediaRequestHandler
+    // — is exercised separately in system-audio-no-crash.test.ts.
     await window.addInitScript(() => {
-      const audioContext = new AudioContext();
-      const oscillator = audioContext.createOscillator();
-      oscillator.frequency.value = 440;
-      const destination = audioContext.createMediaStreamDestination();
-      oscillator.connect(destination);
-      oscillator.start();
+      function fakeToneStream(frequencyHz: number): MediaStream {
+        const audioContext = new AudioContext();
+        const oscillator = audioContext.createOscillator();
+        oscillator.frequency.value = frequencyHz;
+        const destination = audioContext.createMediaStreamDestination();
+        oscillator.connect(destination);
+        oscillator.start();
+        return destination.stream;
+      }
 
-      navigator.mediaDevices.getUserMedia = async () => destination.stream;
+      navigator.mediaDevices.getUserMedia = async () => fakeToneStream(440);
+      navigator.mediaDevices.getDisplayMedia = async () => fakeToneStream(300);
     });
     await window.reload();
 

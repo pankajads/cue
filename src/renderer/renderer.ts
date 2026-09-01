@@ -65,17 +65,32 @@ async function startSystemAudio(elements: LevelMeterElements): Promise<void> {
       return;
     }
 
-    // The chromeMediaSource/chromeMediaSourceId constraint pair is Electron's
-    // (non-standard, hence the `as any`) extension for routing a
-    // desktopCapturer source into getUserMedia.
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        mandatory: {
-          chromeMediaSource: "desktop",
-          chromeMediaSourceId: sourceId,
-        },
-      },
-    } as unknown as MediaStreamConstraints);
+    // getUserMedia with the legacy { mandatory: { chromeMediaSource:
+    // 'desktop', ... } } constraint crashes the whole renderer process on
+    // an audio-only request (Chromium: "bad IPC message, reason 263") —
+    // it does not fail gracefully, so this is not optional. getDisplayMedia
+    // is the current officially supported replacement; main.ts's
+    // setDisplayMediaRequestHandler answers this call and requests loopback
+    // audio on the primary screen source. A 1x1 video track is requested
+    // only because getDisplayMedia requires it — it's discarded immediately
+    // below, since only the audio track is used.
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: true,
+      video: { width: 1, height: 1 },
+    });
+
+    stream.getVideoTracks().forEach((track) => {
+      track.stop();
+      stream.removeTrack(track);
+    });
+
+    if (stream.getAudioTracks().length === 0) {
+      // Reachable today on platforms where Electron's loopback audio isn't
+      // supported yet (see ARCHITECTURE.md) — a real gap, not a bug in this
+      // code: getDisplayMedia succeeded but delivered no audio track.
+      elements.status.textContent = "unavailable (no system audio track on this platform)";
+      return;
+    }
 
     elements.status.textContent = "listening";
     driveLevelMeter(stream, elements);

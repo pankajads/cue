@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage } from "electron";
+import { app, BrowserWindow, desktopCapturer, Menu, session, Tray, nativeImage } from "electron";
 import * as path from "path";
 import { registerAudioSourceHandlers } from "./audio-sources";
 
@@ -62,6 +62,33 @@ function togglePopover(): void {
 
 app.whenReady().then(() => {
   registerAudioSourceHandlers();
+
+  // Answers the renderer's navigator.mediaDevices.getDisplayMedia() calls
+  // (see renderer.ts's startSystemAudio) by auto-selecting the primary
+  // screen source and requesting loopback audio on it. This is the current
+  // officially supported way to get system/"remote" audio in Electron — the
+  // legacy getUserMedia({ audio: { mandatory: { chromeMediaSource:
+  // 'desktop', ... } } }) audio-only pattern this replaced does not fail
+  // gracefully: it crashes the whole renderer process (Chromium kills it
+  // with "Terminating renderer for bad IPC message, reason 263 /
+  // DESKTOP_CAPTURER_INVALID_OR_UNKNOWN_ID"), which is what a blank white
+  // popover after clicking "Start listening" was. See ARCHITECTURE.md for
+  // the current real caveat: Electron's own shipped types document
+  // `audio: 'loopback'` here as Windows-only today, so this fixes the crash
+  // everywhere but is only confirmed to deliver real system audio on
+  // Windows so far.
+  session.defaultSession.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer
+      .getSources({ types: ["screen"], fetchWindowIcons: false })
+      .then((sources) => {
+        if (sources.length === 0) {
+          callback({});
+          return;
+        }
+        callback({ video: sources[0], audio: "loopback" });
+      })
+      .catch(() => callback({}));
+  });
 
   const icon = nativeImage.createFromPath(path.join(__dirname, "../../assets/tray-icon.png"));
   tray = new Tray(icon.resize({ width: 16, height: 16 }));

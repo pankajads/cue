@@ -14,7 +14,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full pipeline design, including t
 - The rule-based sentiment/tension/guidance engine (`src/shared/guidance/`) — unit-tested extensively, and validated against two full realistic conversation transcripts (a frustrated customer support call, and an HR warning to an SRE about rudeness and repeated lateness), both at the algorithm level and end-to-end through the real UI. See [ARCHITECTURE.md](ARCHITECTURE.md#guidance-engine) for how it works and [tests/fixtures/conversation-scenarios.ts](tests/fixtures/conversation-scenarios.ts) for the transcripts themselves.
 
 **Not yet verified** — needs a human, because it's gated behind a one-time OS permission dialog no automated tool can click through in a headless environment:
-- Whether real hardware microphone/system audio actually delivers usable data once you personally grant the mic and screen-recording permission prompts.
+- Whether real hardware microphone audio actually delivers usable data once you personally grant the mic permission prompt.
+
+**Known real limitation, not a bug to report twice**: system/"remote" audio used to crash the whole popover on click (a real Electron bug — audio-only `getUserMedia({mandatory:{chromeMediaSource:'desktop',...}})` kills the renderer process). That crash is fixed (see [ARCHITECTURE.md](ARCHITECTURE.md#audio-capture)) by switching to `getDisplayMedia` + `setDisplayMediaRequestHandler`, which is Electron's own current answer — but Electron 44's shipped types document loopback audio there as **Windows-only today**. On macOS, expect the system-audio meter to degrade gracefully to "unavailable" rather than crash, not to show real captured audio yet. This is an open architectural question, not a quick fix — see ARCHITECTURE.md for the options.
 
 **Not yet built:**
 - Speech-to-text (a whisper.cpp Node binding — not yet evaluated/chosen).
