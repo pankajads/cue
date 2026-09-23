@@ -69,7 +69,7 @@
     }
   },
   "dependencies": {
-    "@huggingface/transformers": "^4.2.0",
+    "@huggingface/transformers": "^4.3.0",
     "node-llama-cpp": "^3.20.0"
   },
   "overrides": {
