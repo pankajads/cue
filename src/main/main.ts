@@ -29,8 +29,14 @@ function createPopoverWindow(): BrowserWindow {
   window.loadFile(path.join(__dirname, "../renderer/index.html"));
 
   // A frameless utility popup should disappear on blur, like a real menu-bar
-  // popover, not linger as a stray window.
+  // popover, not linger as a stray window. Skipped under the e2e test hooks:
+  // on a headless Xvfb display with no window manager, focus is unreliable
+  // and a spurious blur would hide the popover mid-test, making the
+  // "Start listening" click time out intermittently.
   window.on("blur", () => {
+    if (process.env.SENTIMENT_ADVISOR_E2E_TEST_HOOKS === "1") {
+      return;
+    }
     if (!window.webContents.isDevToolsOpened()) {
       window.hide();
     }
