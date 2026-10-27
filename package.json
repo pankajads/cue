@@ -29,8 +29,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
-    "electron": "^44.4.5",
-    "electron-builder": "^26.15.3",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
     "esbuild": "^0.28.2",
     "playwright-core": "^1.63.0",
     "typescript": "^7.0.2"
