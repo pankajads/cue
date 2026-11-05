@@ -73,7 +73,8 @@
     "node-llama-cpp": "^3.22.1"
   },
   "overrides": {
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
+    "simple-git": "4.0.2",
     "adm-zip": "0.6.1"
   }
 }
